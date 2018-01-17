@@ -4,19 +4,18 @@ Interrupts and Interrupt Handling. Part 9.
 Introduction to deferred interrupts (Softirq, Tasklets and Workqueues)
 --------------------------------------------------------------------------------
 
-It is the nine part of the Interrupts and Interrupt Handling in the Linux kernel [chapter](http://0xax.gitbooks.io/linux-insides/content/interrupts/index.html) and in the previous [Previous part](http://0xax.gitbooks.io/linux-insides/content/interrupts/interrupts-8.html) we saw implementation of the `init_IRQ` from that defined in the [arch/x86/kernel/irqinit.c](https://github.com/torvalds/linux/blob/16f73eb02d7e1765ccab3d2018e0bd98eb93d973/arch/x86/kernel/irqinit.c) source code file. So, we will continue to dive into the initialization stuff which is related to the external hardware interrupts in this part.
+This is the ninth part of the Interrupts and Interrupt Handling in the Linux kernel [chapter](http://0xax.gitbooks.io/linux-insides/content/interrupts/index.html) and in the [previous part](http://0xax.gitbooks.io/linux-insides/content/interrupts/interrupts-8.html) we have explored the implementation of the `init_IRQ` from the [arch/x86/kernel/irqinit.c](https://github.com/torvalds/linux/blob/16f73eb02d7e1765ccab3d2018e0bd98eb93d973/arch/x86/kernel/irqinit.c). In this part we will continue to dive into the initialization stuff which is related to the external hardware interrupts.
 
-Interrupts may have different important characteristics and there are two among them:
+The rule number one of writing **interrupt handlers** is that **they should take the least amount of time possible** for the sake of the latency of the whole system. Sometimes though, to handle the interrupt properly a large amount of work must be done.
 
-* Handler of an interrupt must execute quickly;
-* Sometime an interrupt handler must do a large amount of work.
+Because of this, historically, the handling of interrupts was split into two parts:
 
-As you can understand, it is almost impossible to make so that both characteristics were valid. Because of these, previously the handling of interrupts was split into two parts:
+* the top half (aka first-level interrupt handler)
+* the bottom half (aka second-level interrupt handler)
 
-* Top half;
-* Bottom half;
+Nowadays the term "bottom half" remains as a common noun referring to all the different ways for deferring the execution of the interrupt handlers.
 
-In the past there was one way to defer interrupt handling in Linux kernel. And it was called: `the bottom half` of the processor, but now it is already not actual. Now this term has remained as a common noun referring to all the different ways of organizing deferred processing of an interrupt.The deferred processing of an interrupt suggests that some of the actions for an interrupt may be postponed to a later execution when the system will be less loaded. As you can suggest, an interrupt handler can do large amount of work that is impermissible as it executes in the context where interrupts are disabled. That's why processing of an interrupt can be split on two different parts. In the first part, the main handler of an interrupt does only minimal and the most important job. After this it schedules the second part and finishes its work. When the system is less busy and context of the processor allows to handle interrupts, the second part starts its work and finishes to process remaining part of a deferred interrupt.
+The idea is that the main handler of an interrupt ("the top half") does only the minimal necessary amount of work and after that it schedules the deferred part and exits while the interrupts are masked. "The bottom half", which finished the handling of the interrupt, is executed later with the interrupt unmasked. 
 
 There are three types of `deferred interrupts` in the Linux kernel:
 
@@ -24,12 +23,12 @@ There are three types of `deferred interrupts` in the Linux kernel:
 * `tasklets`;
 * `workqueues`;
 
-And we will see description of all of these types in this part. As I said, we saw only a little bit about this theme, so, now is time to dive deep into details about this theme.
+Here we will describe of all of them. Let's have a deeper dive now.
 
 Softirqs
 ----------------------------------------------------------------------------------
 
-With the advent of parallelisms in the Linux kernel, all new schemes of implementation of the bottom half handlers are built on the performance of the processor specific kernel thread that called `ksoftirqd` (will be discussed below). Each processor has its own thread that is called `ksoftirqd/n` where the `n` is the number of the processor. We can see it in the output of the `systemd-cgls` util:
+With the advent of parallelisms in the Linux kernel, all new schemes of implementation of the bottom half handlers are built on the performance of the processor-specific kernel thread that called `ksoftirqd` (will be discussed below). Each processor has its own thread that is called `ksoftirqd/n` where the `n` is the number of the processor. We can see it in the output of the `systemd-cgls` util:
 
 ```
 $ systemd-cgls -k | grep ksoft
